@@ -47,10 +47,10 @@ class FaceModel:
         # inform the algorithm where some of the whole are!
         mesh_info.set_holes([[1500, 1500], [2500, 1500], [2000, 2800]])
 
-        mesh = triangle.build(mesh_info=mesh_info, quality_meshing=False)
-        self.points = np.array(mesh.points, dtype=np.int32)
-        self.triangles = np.array(mesh.elements)
-        self.facets = np.array(mesh.facets)
+        self.mesh = triangle.build(mesh_info=mesh_info, quality_meshing=False)
+        self.points = np.array(self.mesh.points, dtype=np.int32)
+        self.triangles = np.array(self.mesh.elements)
+        self.facets = np.array(self.mesh.facets)
 
         self.masking = np.ones(len(consts.FACE_COORDS), dtype=np.bool_)
         self.masking[consts.EYE_HULL_L_IDX] = 0
@@ -86,6 +86,8 @@ class FaceModel:
 
         self.height = int(self.__HEIGHT * scale)
         self.width = int(self.__WIDTH * scale)
+
+        self.points = (np.array(self.mesh.points) * scale).astype(np.int32)
 
     def create_canvas(self) -> np.ndarray:
         """Create a canvas for the face model.
