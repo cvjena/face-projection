@@ -1,5 +1,7 @@
 __all__ = ["Warper"]
 
+from typing import Optional
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -27,30 +29,10 @@ class Warper:
         """
         return self.face_model.create_canvas()
 
-    def apply(
-        self,
-        face_img: np.ndarray[np.int8],
-        face_data: np.ndarray[np.int8],
-        beta: float = 0.2,
-    ) -> np.ndarray[np.int8]:
-        if not isinstance(face_img, np.ndarray):
-            raise TypeError("face_img must be a numpy array")
-
-        if not isinstance(face_data, np.ndarray):
-            raise TypeError("face_data must be a numpy array")
-
-        if not isinstance(beta, float) or (beta < 0 or beta > 1):
-            raise TypeError("beta must be a float between 0 and 1")
-
-        if not self.face_model.check_valid(face_data):
-            raise ValueError(
-                f"face_data is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]"
-            )
-
+    def __get_landmarks(self, face_img: np.ndarray) -> np.ndarray:
         # this should be put somewhere else
         # locate the face with media pipe
         h, w = face_img.shape[:2]
-
         with mp.solutions.face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
@@ -72,19 +54,13 @@ class Warper:
                 lms[:, 0] *= w
                 lms[:, 1] *= h
                 lms = lms.astype(np.int32)
+        return lms
 
-        return self.__warp(
-            cooridnates_dst=lms[self.face_model.masking],
-            image_src=face_data,
-            image_dst=face_img,
-            beta=beta,
-        )
-
-    def apply_without_face_detection(
+    def apply(
         self,
         face_img: np.ndarray[np.int8],
         face_data: np.ndarray[np.int8],
-        face_landmarks: np.ndarray[np.int8],
+        landmarks: Optional[np.ndarray[np.int32]] = None,
         beta: float = 0.2,
     ) -> np.ndarray[np.int8]:
         if not isinstance(face_img, np.ndarray):
@@ -93,14 +69,24 @@ class Warper:
         if not isinstance(face_data, np.ndarray):
             raise TypeError("face_data must be a numpy array")
 
-        if not isinstance(face_landmarks, np.ndarray):
-            raise TypeError("face_landmarks must be a numpy array")
+        if not isinstance(beta, float) or (beta < 0 or beta > 1):
+            raise TypeError("beta must be a float between 0 and 1")
 
-        if face_landmarks.shape[0] != 468:
-            raise ValueError("face_landmarks must have 468 landmarks")
+        if not self.face_model.check_valid(face_data):
+            raise ValueError(
+                f"face_data is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]"
+            )
+
+        if landmarks is None:
+            landmarks = self.__get_landmarks(face_img)
+        else:
+            if not isinstance(landmarks, np.ndarray):
+                raise TypeError("landmarks must be a numpy array")
+            if landmarks.shape[0] != 468:
+                raise ValueError("landmarks must have 468 landmarks")
 
         return self.__warp(
-            cooridnates_dst=face_landmarks[self.face_model.masking],
+            cooridnates_dst=landmarks[self.face_model.masking],
             image_src=face_data,
             image_dst=face_img,
             beta=beta,
