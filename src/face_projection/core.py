@@ -202,16 +202,8 @@ class Warper:
             slice_x = slice(rect_dst[0], rect_dst[0] + rect_dst[2])
 
             image_layer_t[mask_crop == 0] = 0
-            image_layer_b = image_out[slice_y, slice_x] * mask_crop
-
-            image_layer_b = image_layer_b / 255
-            image_layer_t = image_layer_t / 255
-            inplace = image_layer_t
-            inplace = np.clip(inplace, 0, 1)
-            inplace *= 255
-
             image_out[slice_y, slice_x] = (
-                image_out[slice_y, slice_x] * (1 - mask_crop) + inplace
+                image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
             )
 
         mask = np.isclose(image_out, [0, 0, 0])
