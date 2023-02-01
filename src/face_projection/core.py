@@ -65,9 +65,7 @@ class Warper:
             raise TypeError("beta must be a float between 0 and 1")
 
         if not self.face_model.check_valid(face_data):
-            raise ValueError(
-                f"face_data is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]"
-            )
+            raise ValueError(f"face_data is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]")
 
         if landmarks is None:
             self.__get_landmarks(face_img)
@@ -109,12 +107,8 @@ class Warper:
 
         rect_src_ = np.empty((len(self.face_model.triangles), 4), dtype=np.int32)
         rect_dst_ = np.empty((len(self.face_model.triangles), 4), dtype=np.int32)
-        tri_src_crop_ = np.empty(
-            (len(self.face_model.triangles), 3, 2), dtype=np.float32
-        )
-        tri_dst_crop_ = np.empty(
-            (len(self.face_model.triangles), 3, 2), dtype=np.float32
-        )
+        tri_src_crop_ = np.empty((len(self.face_model.triangles), 3, 2), dtype=np.float32)
+        tri_dst_crop_ = np.empty((len(self.face_model.triangles), 3, 2), dtype=np.float32)
         temp_3_2 = np.empty((3, 2), dtype=np.float32)
         depth = np.empty(len(self.face_model.triangles))
 
@@ -147,30 +141,10 @@ class Warper:
         t = time()
 
         # sort by detph
-        rect_src_ = [
-            x
-            for _, x in sorted(
-                zip(depth, rect_src_), key=lambda pair: pair[0], reverse=True
-            )
-        ]
-        rect_dst_ = [
-            x
-            for _, x in sorted(
-                zip(depth, rect_dst_), key=lambda pair: pair[0], reverse=True
-            )
-        ]
-        tri_src_crop_ = [
-            x
-            for _, x in sorted(
-                zip(depth, tri_src_crop_), key=lambda pair: pair[0], reverse=True
-            )
-        ]
-        tri_dst_crop_ = [
-            x
-            for _, x in sorted(
-                zip(depth, tri_dst_crop_), key=lambda pair: pair[0], reverse=True
-            )
-        ]
+        rect_src_ = [x for _, x in sorted(zip(depth, rect_src_), key=lambda pair: pair[0], reverse=True)]
+        rect_dst_ = [x for _, x in sorted(zip(depth, rect_dst_), key=lambda pair: pair[0], reverse=True)]
+        tri_src_crop_ = [x for _, x in sorted(zip(depth, tri_src_crop_), key=lambda pair: pair[0], reverse=True)]
+        tri_dst_crop_ = [x for _, x in sorted(zip(depth, tri_dst_crop_), key=lambda pair: pair[0], reverse=True)]
 
         print(f"Time to sort triangles by depth: {time() - t:.3f} seconds")
 
@@ -192,17 +166,13 @@ class Warper:
 
             # Get mask by filling triangle
             mask_crop = np.zeros((rect_dst_[i][3], rect_dst_[i][2], 3), dtype=np.uint8)
-            mask_crop = cv2.fillConvexPoly(
-                mask_crop, np.int32(tri_dst_crop_[i]), (1, 1, 1), cv2.LINE_AA, 0
-            )
+            mask_crop = cv2.fillConvexPoly(mask_crop, np.int32(tri_dst_crop_[i]), (1, 1, 1), cv2.LINE_AA, 0)
 
             slice_y = slice(rect_dst_[i][1], rect_dst_[i][1] + rect_dst_[i][3])
             slice_x = slice(rect_dst_[i][0], rect_dst_[i][0] + rect_dst_[i][2])
 
             image_layer_t[mask_crop == 0] = 0
-            image_out[slice_y, slice_x] = (
-                image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
-            )
+            image_out[slice_y, slice_x] = image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
 
         print(f"Time to warp triangles: {time() - t:.3f} seconds")
 
