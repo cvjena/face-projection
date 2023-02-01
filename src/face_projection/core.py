@@ -13,6 +13,14 @@ class Warper:
     def __init__(self) -> None:
         self.face_model = FaceModel()
 
+        self.__landmarks = np.zeros((468, 3), dtype=np.int32)
+        self.__face_mesh = mp.solutions.face_mesh.FaceMesh(
+            max_num_faces=1,
+            refine_landmarks=True,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+
     def set_scale(self, scale: float) -> None:
         """Set the scale of the face model.
 
@@ -33,28 +41,11 @@ class Warper:
         # this should be put somewhere else
         # locate the face with media pipe
         h, w = face_img.shape[:2]
-        with mp.solutions.face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        ) as face_mesh:
-            results = face_mesh.process(face_img)
-            if results.multi_face_landmarks:
-                lms = np.array(
-                    [
-                        [
-                            results.multi_face_landmarks[0].landmark[i].x,
-                            results.multi_face_landmarks[0].landmark[i].y,
-                            results.multi_face_landmarks[0].landmark[i].z,
-                        ]
-                        for i in range(468)
-                    ]
-                )
-                lms[:, 0] *= w
-                lms[:, 1] *= h
-                lms = lms.astype(np.int32)
-        return lms
+        results = self.__face_mesh.process(face_img)
+        if results.multi_face_landmarks:
+            lms = results.multi_face_landmarks[0].landmark
+            for i in range(468):
+                self.__landmarks[i, :] = int(lms[i].x * w), int(lms[i].y * h), lms[i].z
 
     def apply(
         self,
@@ -78,15 +69,16 @@ class Warper:
             )
 
         if landmarks is None:
-            landmarks = self.__get_landmarks(face_img)
+            self.__get_landmarks(face_img)
         else:
             if not isinstance(landmarks, np.ndarray):
                 raise TypeError("landmarks must be a numpy array")
             if landmarks.shape[0] != 468:
                 raise ValueError("landmarks must have 468 landmarks")
+            self.__landmarks = landmarks
 
         return self.__warp(
-            cooridnates_dst=landmarks[self.face_model.masking],
+            cooridnates_dst=self.__landmarks[self.face_model.masking],
             image_src=face_data,
             image_dst=face_img,
             beta=beta,
