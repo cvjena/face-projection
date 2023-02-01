@@ -1,5 +1,6 @@
 __all__ = ["Warper"]
 
+from time import time
 from typing import Optional
 
 import cv2
@@ -106,40 +107,44 @@ class Warper:
         """
         image_out = np.zeros_like(image_dst)
 
-        rect_src_, rect_dst_, tri_src_crop_, tri_dst_crop_ = [], [], [], []
-        depth = np.zeros(len(self.face_model.triangles))
+        rect_src_ = np.empty((len(self.face_model.triangles), 4), dtype=np.int32)
+        rect_dst_ = np.empty((len(self.face_model.triangles), 4), dtype=np.int32)
+        tri_src_crop_ = np.empty(
+            (len(self.face_model.triangles), 3, 2), dtype=np.float32
+        )
+        tri_dst_crop_ = np.empty(
+            (len(self.face_model.triangles), 3, 2), dtype=np.float32
+        )
+        temp_3_2 = np.empty((3, 2), dtype=np.float32)
+        depth = np.empty(len(self.face_model.triangles))
+
+        t = time()
 
         for idx_tri in range(len(self.face_model.triangles)):
             tri_src = self.face_model.points[self.face_model.triangles[idx_tri]]
             tri_dst = cooridnates_dst[self.face_model.triangles[idx_tri]]
+
             depth[idx_tri] = np.min(tri_dst, axis=1)[-1]
             tri_dst = np.delete(tri_dst, 2, 1)
 
             rect_src = cv2.boundingRect(tri_src)
             rect_dst = cv2.boundingRect(tri_dst)
 
-            rect_src_.append(rect_src)
-            rect_dst_.append(rect_dst)
+            rect_src_[idx_tri] = rect_src
+            rect_dst_[idx_tri] = rect_dst
 
             # Offset points by left top corner of the respective rectangles
-            tri_src_crop_.append(
-                np.array(
-                    [
-                        ((tri_src[i][0] - rect_src[0]), (tri_src[i][1] - rect_src[1]))
-                        for i in range(3)
-                    ],
-                    dtype=np.float32,
-                )
-            )
-            tri_dst_crop_.append(
-                np.array(
-                    [
-                        ((tri_dst[i][0] - rect_dst[0]), (tri_dst[i][1] - rect_dst[1]))
-                        for i in range(3)
-                    ],
-                    dtype=np.float32,
-                )
-            )
+            temp_3_2[:, 0] = tri_src[:, 0] - rect_src[0]
+            temp_3_2[:, 1] = tri_src[:, 1] - rect_src[1]
+            tri_src_crop_[idx_tri] = temp_3_2
+
+            temp_3_2[:, 0] = tri_dst[:, 0] - rect_dst[0]
+            temp_3_2[:, 1] = tri_dst[:, 1] - rect_dst[1]
+            tri_dst_crop_[idx_tri] = temp_3_2
+
+        print(f"Time to calculate triangles: {time() - t:.2f} seconds")
+
+        t = time()
 
         # sort by detph
         rect_src_ = [
@@ -167,6 +172,9 @@ class Warper:
             )
         ]
 
+        print(f"Time to sort triangles by depth: {time() - t:.2f} seconds")
+
+        t = time()
         for rect_src, rect_dst, tri_src_crop, tri_dst_crop in zip(
             rect_src_, rect_dst_, tri_src_crop_, tri_dst_crop_
         ):
@@ -180,8 +188,8 @@ class Warper:
                 image_src_crop,
                 warping_matrix,
                 (rect_dst[2], rect_dst[3]),
-                flags=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_REFLECT101,
+                flags=cv2.INTER_NEAREST,
+                borderMode=cv2.BORDER_REPLICATE,
             )
 
             # Get mask by filling triangle
@@ -198,8 +206,15 @@ class Warper:
                 image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
             )
 
-        mask = np.isclose(image_out, [0, 0, 0])
-        out = np.zeros_like(image_out)
+        print(f"Time to warp triangles: {time() - t:.2f} seconds")
+
+        t = time()
+        mask = image_out == 0
+        mask_i = np.invert(mask)
+
+        out = np.empty_like(image_out, dtype=np.uint8)
         out[mask] = image_dst[mask]
-        out[~mask] = image_dst[~mask] * (1 - beta) + image_out[~mask] * beta
+        out[mask_i] = image_dst[mask_i] * (1 - beta) + image_out[mask_i] * beta
+        print(f"Time to blend: {time() - t:.2f} seconds")
+
         return out
