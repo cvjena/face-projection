@@ -11,6 +11,22 @@ class Warper:
     def __init__(self) -> None:
         self.face_model = FaceModel()
 
+    def set_scale(self, scale: float) -> None:
+        """Set the scale of the face model.
+
+        Args:
+            scale (float): The scale of the face model.
+        """
+        self.face_model.set_scale(scale)
+
+    def create_canvas(self) -> np.ndarray[np.int8]:
+        """Create a canvas for the face model.
+
+        This will create a canvas for the face model based on the current scale of the
+        face model.
+        """
+        return self.face_model.create_canvas()
+
     def apply(
         self,
         face_img: np.ndarray[np.int8],
@@ -22,6 +38,14 @@ class Warper:
 
         if not isinstance(face_data, np.ndarray):
             raise TypeError("face_data must be a numpy array")
+
+        if not isinstance(beta, float) or (beta < 0 or beta > 1):
+            raise TypeError("beta must be a float between 0 and 1")
+
+        if not self.face_model.check_valid(face_data):
+            raise ValueError(
+                f"face_data is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]"
+            )
 
         # this should be put somewhere else
         # locate the face with media pipe

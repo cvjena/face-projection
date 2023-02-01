@@ -14,7 +14,15 @@ class FaceModel:
 
     """
 
+    __HEIGHT: int = 4096
+    __WIDTH: int = 4096
+
     def __init__(self) -> None:
+        self.height = self.__HEIGHT
+        self.width = self.__WIDTH
+
+        self.scale: float = 1.0
+
         self.points = consts.FACE_COORDS
 
         assert len(self.points) == 468, "The number of points must be 468"
@@ -57,3 +65,43 @@ class FaceModel:
             results.append((pt1, pt2))
         results.append((self.hull_idx[-1], self.hull_idx[0]))
         return np.array(results).squeeze().tolist()
+
+    def set_scale(self, scale: float) -> None:
+        """Set the scale of the face model.
+
+        This will change the height and width of the model based on the original
+        scale of the model (4096, 4096).
+
+        Args:
+            scale (float): The scale of the model.
+        """
+
+        if not isinstance(scale, float):
+            raise TypeError("scale must be a float")
+
+        if scale <= 0:
+            raise ValueError("scale must be greater than 0")
+
+        self.scale = scale
+
+        self.height = int(self.__HEIGHT * scale)
+        self.width = int(self.__WIDTH * scale)
+
+    def create_canvas(self) -> np.ndarray:
+        """Create a canvas for the face model.
+
+        Returns:
+            np.ndarray: A canvas with the same shape as the face model.
+        """
+        return np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+    def check_valid(self, image: np.ndarray) -> bool:
+        """Check if the image is valid for the face model.
+
+        Args:
+            image (np.ndarray): The image to check.
+
+        Returns:
+            bool: True if the image is valid, False otherwise.
+        """
+        return image.shape[:2] == (self.height, self.width)
