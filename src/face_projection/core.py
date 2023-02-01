@@ -142,7 +142,7 @@ class Warper:
             temp_3_2[:, 1] = tri_dst[:, 1] - rect_dst[1]
             tri_dst_crop_[idx_tri] = temp_3_2
 
-        print(f"Time to calculate triangles: {time() - t:.2f} seconds")
+        print(f"Time to calculate triangles: {time() - t:.3f} seconds")
 
         t = time()
 
@@ -172,41 +172,39 @@ class Warper:
             )
         ]
 
-        print(f"Time to sort triangles by depth: {time() - t:.2f} seconds")
+        print(f"Time to sort triangles by depth: {time() - t:.3f} seconds")
 
         t = time()
-        for rect_src, rect_dst, tri_src_crop, tri_dst_crop in zip(
-            rect_src_, rect_dst_, tri_src_crop_, tri_dst_crop_
-        ):
+        for i in range(len(self.face_model.triangles)):
             # Crop input image
             image_src_crop = image_src[
-                rect_src[1] : rect_src[1] + rect_src[3],
-                rect_src[0] : rect_src[0] + rect_src[2],
+                rect_src_[i][1] : rect_src_[i][1] + rect_src_[i][3],
+                rect_src_[i][0] : rect_src_[i][0] + rect_src_[i][2],
             ]
-            warping_matrix = cv2.getAffineTransform(tri_src_crop, tri_dst_crop)
+            warping_matrix = cv2.getAffineTransform(tri_src_crop_[i], tri_dst_crop_[i])
             image_layer_t = cv2.warpAffine(
                 image_src_crop,
                 warping_matrix,
-                (rect_dst[2], rect_dst[3]),
+                (rect_dst_[i][2], rect_dst_[i][3]),
                 flags=cv2.INTER_NEAREST,
                 borderMode=cv2.BORDER_REPLICATE,
             )
 
             # Get mask by filling triangle
-            mask_crop = np.zeros((rect_dst[3], rect_dst[2], 3), dtype=np.uint8)
+            mask_crop = np.zeros((rect_dst_[i][3], rect_dst_[i][2], 3), dtype=np.uint8)
             mask_crop = cv2.fillConvexPoly(
-                mask_crop, np.int32(tri_dst_crop), (1, 1, 1), cv2.LINE_AA, 0
+                mask_crop, np.int32(tri_dst_crop_[i]), (1, 1, 1), cv2.LINE_AA, 0
             )
 
-            slice_y = slice(rect_dst[1], rect_dst[1] + rect_dst[3])
-            slice_x = slice(rect_dst[0], rect_dst[0] + rect_dst[2])
+            slice_y = slice(rect_dst_[i][1], rect_dst_[i][1] + rect_dst_[i][3])
+            slice_x = slice(rect_dst_[i][0], rect_dst_[i][0] + rect_dst_[i][2])
 
             image_layer_t[mask_crop == 0] = 0
             image_out[slice_y, slice_x] = (
                 image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
             )
 
-        print(f"Time to warp triangles: {time() - t:.2f} seconds")
+        print(f"Time to warp triangles: {time() - t:.3f} seconds")
 
         t = time()
         mask = image_out == 0
@@ -215,6 +213,6 @@ class Warper:
         out = np.empty_like(image_out, dtype=np.uint8)
         out[mask] = image_dst[mask]
         out[mask_i] = image_dst[mask_i] * (1 - beta) + image_out[mask_i] * beta
-        print(f"Time to blend: {time() - t:.2f} seconds")
+        print(f"Time to blend: {time() - t:.3f} seconds")
 
         return out
