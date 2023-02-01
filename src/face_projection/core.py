@@ -22,6 +22,16 @@ class Warper:
             min_tracking_confidence=0.5,
         )
 
+        self.len_triangles = self.face_model.triangles.shape[0]
+        self.rect_src_buffer = np.empty((self.len_triangles, 4), dtype=np.int32)
+        self.rect_dst_buffer = np.empty((self.len_triangles, 4), dtype=np.int32)
+
+        self.tri_src_crop_buffer = np.empty((self.len_triangles, 3, 2), dtype=np.float32)
+        self.tri_dst_crop_buffer = np.empty((self.len_triangles, 3, 2), dtype=np.float32)
+
+        self.buffer_3_2 = np.empty((3, 2), dtype=np.float32)
+        self.depth_buffer = np.empty(self.len_triangles)
+
     def set_scale(self, scale: float) -> None:
         """Set the scale of the face model.
 
@@ -105,71 +115,59 @@ class Warper:
         """
         image_out = np.zeros_like(image_dst)
 
-        rect_src_ = np.empty((len(self.face_model.triangles), 4), dtype=np.int32)
-        rect_dst_ = np.empty((len(self.face_model.triangles), 4), dtype=np.int32)
-        tri_src_crop_ = np.empty((len(self.face_model.triangles), 3, 2), dtype=np.float32)
-        tri_dst_crop_ = np.empty((len(self.face_model.triangles), 3, 2), dtype=np.float32)
-        temp_3_2 = np.empty((3, 2), dtype=np.float32)
-        depth = np.empty(len(self.face_model.triangles))
-
         t = time()
 
-        for idx_tri in range(len(self.face_model.triangles)):
+        for idx_tri in range(self.len_triangles):
             tri_src = self.face_model.points[self.face_model.triangles[idx_tri]]
             tri_dst = cooridnates_dst[self.face_model.triangles[idx_tri]]
 
-            depth[idx_tri] = np.min(tri_dst, axis=1)[-1]
+            self.depth_buffer[idx_tri] = np.min(tri_dst, axis=1)[-1]
             tri_dst = np.delete(tri_dst, 2, 1)
 
             rect_src = cv2.boundingRect(tri_src)
             rect_dst = cv2.boundingRect(tri_dst)
 
-            rect_src_[idx_tri] = rect_src
-            rect_dst_[idx_tri] = rect_dst
+            self.rect_src_buffer[idx_tri] = rect_src
+            self.rect_dst_buffer[idx_tri] = rect_dst
 
             # Offset points by left top corner of the respective rectangles
-            temp_3_2[:, 0] = tri_src[:, 0] - rect_src[0]
-            temp_3_2[:, 1] = tri_src[:, 1] - rect_src[1]
-            tri_src_crop_[idx_tri] = temp_3_2
+            self.buffer_3_2[:, 0] = tri_src[:, 0] - rect_src[0]
+            self.buffer_3_2[:, 1] = tri_src[:, 1] - rect_src[1]
+            self.tri_src_crop_buffer[idx_tri] = self.buffer_3_2
 
-            temp_3_2[:, 0] = tri_dst[:, 0] - rect_dst[0]
-            temp_3_2[:, 1] = tri_dst[:, 1] - rect_dst[1]
-            tri_dst_crop_[idx_tri] = temp_3_2
+            self.buffer_3_2[:, 0] = tri_dst[:, 0] - rect_dst[0]
+            self.buffer_3_2[:, 1] = tri_dst[:, 1] - rect_dst[1]
+            self.tri_dst_crop_buffer[idx_tri] = self.buffer_3_2
 
         print(f"Time to calculate triangles: {time() - t:.3f} seconds")
 
         t = time()
-
-        # sort by detph
-        rect_src_ = [x for _, x in sorted(zip(depth, rect_src_), key=lambda pair: pair[0], reverse=True)]
-        rect_dst_ = [x for _, x in sorted(zip(depth, rect_dst_), key=lambda pair: pair[0], reverse=True)]
-        tri_src_crop_ = [x for _, x in sorted(zip(depth, tri_src_crop_), key=lambda pair: pair[0], reverse=True)]
-        tri_dst_crop_ = [x for _, x in sorted(zip(depth, tri_dst_crop_), key=lambda pair: pair[0], reverse=True)]
-
+        self.depth_buffer = np.argsort(self.depth_buffer)[::-1]
         print(f"Time to sort triangles by depth: {time() - t:.3f} seconds")
 
         t = time()
-        for i in range(len(self.face_model.triangles)):
+        for idx in range(self.len_triangles):
+            i = self.depth_buffer[idx]
             # Crop input image
             image_src_crop = image_src[
-                rect_src_[i][1] : rect_src_[i][1] + rect_src_[i][3],
-                rect_src_[i][0] : rect_src_[i][0] + rect_src_[i][2],
+                self.rect_src_buffer[i][1] : self.rect_src_buffer[i][1] + self.rect_src_buffer[i][3],
+                self.rect_src_buffer[i][0] : self.rect_src_buffer[i][0] + self.rect_src_buffer[i][2],
             ]
-            warping_matrix = cv2.getAffineTransform(tri_src_crop_[i], tri_dst_crop_[i])
+            warping_matrix = cv2.getAffineTransform(self.tri_src_crop_buffer[i], self.tri_dst_crop_buffer[i])
             image_layer_t = cv2.warpAffine(
                 image_src_crop,
                 warping_matrix,
-                (rect_dst_[i][2], rect_dst_[i][3]),
+                (self.rect_dst_buffer[i][2], self.rect_dst_buffer[i][3]),
                 flags=cv2.INTER_NEAREST,
                 borderMode=cv2.BORDER_REPLICATE,
             )
 
             # Get mask by filling triangle
-            mask_crop = np.zeros((rect_dst_[i][3], rect_dst_[i][2], 3), dtype=np.uint8)
-            mask_crop = cv2.fillConvexPoly(mask_crop, np.int32(tri_dst_crop_[i]), (1, 1, 1), cv2.LINE_AA, 0)
+            mask_crop = np.zeros((self.rect_dst_buffer[i][3], self.rect_dst_buffer[i][2], 3), dtype=np.uint8)
+            mask_crop = cv2.fillConvexPoly(mask_crop, np.int32(self.tri_dst_crop_buffer[i]), (1, 1, 1), cv2.LINE_AA, 0)
 
-            slice_y = slice(rect_dst_[i][1], rect_dst_[i][1] + rect_dst_[i][3])
-            slice_x = slice(rect_dst_[i][0], rect_dst_[i][0] + rect_dst_[i][2])
+            slice_y = slice(self.rect_dst_buffer[i][1], self.rect_dst_buffer[i][1] + self.rect_dst_buffer[i][3])
+            slice_x = slice(self.rect_dst_buffer[i][0], self.rect_dst_buffer[i][0] + self.rect_dst_buffer[i][2])
 
             image_layer_t[mask_crop == 0] = 0
             image_out[slice_y, slice_x] = image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
