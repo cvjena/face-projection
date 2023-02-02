@@ -53,3 +53,4 @@ MANIFEST
 .conda*/
 *.ipynb
 *.ipynb_checkpoints
+temp_data
