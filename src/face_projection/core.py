@@ -10,8 +10,9 @@ from .face_model import FaceModel
 
 
 class Warper:
-    def __init__(self) -> None:
+    def __init__(self, scale: float = 1.0) -> None:
         self.face_model = FaceModel()
+        self.face_model.set_scale(scale)
 
         self.__landmarks = np.zeros((468, 3), dtype=np.int32)
         self.__face_mesh = mp.solutions.face_mesh.FaceMesh(
