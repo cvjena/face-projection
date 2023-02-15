@@ -31,6 +31,12 @@ class Warper:
         self.buffer_3_2 = np.empty((3, 2), dtype=np.float32)
         self.depth_buffer = np.empty(self.len_triangles)
 
+    def width(self) -> int:
+        return self.face_model.width
+
+    def height(self) -> int:
+        return self.face_model.height
+
     def set_scale(self, scale: float) -> None:
         """Set the scale of the face model.
 
@@ -47,7 +53,7 @@ class Warper:
         """
         return self.face_model.create_canvas()
 
-    def __get_landmarks(self, face_img: np.ndarray) -> np.ndarray:
+    def get_landmarks(self, face_img: np.ndarray) -> np.ndarray:
         # this should be put somewhere else
         # locate the face with media pipe
         h, w = face_img.shape[:2]
@@ -77,7 +83,7 @@ class Warper:
             raise ValueError(f"face_data is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]")
 
         if landmarks is None:
-            self.__get_landmarks(face_img)
+            self.get_landmarks(face_img)
         else:
             if not isinstance(landmarks, np.ndarray):
                 raise TypeError("landmarks must be a numpy array")
