@@ -119,7 +119,7 @@ class Warper:
         Returns:
             np.ndarray[np.int8]: _description_
         """
-        image_out = np.zeros_like(image_dst)
+        image_out = image_dst.copy()
         for idx_tri in range(self.len_triangles):
             tri_src = self.face_model.points[self.face_model.triangles[idx_tri]]
             tri_dst = cooridnates_dst[self.face_model.triangles[idx_tri]]
@@ -170,11 +170,4 @@ class Warper:
             image_layer_t[mask_crop == 0] = 0
             image_out[slice_y, slice_x] = image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
 
-        mask = image_out == 0
-        mask_i = np.invert(mask)
-
-        out = np.empty_like(image_out, dtype=np.uint8)
-        out[mask] = image_dst[mask]
-        out[mask_i] = image_dst[mask_i] * (1 - beta) + image_out[mask_i] * beta
-
-        return out
+        return cv2.addWeighted(image_dst, 1 - beta, image_out, beta, 0.0, dtype=cv2.CV_8U)
