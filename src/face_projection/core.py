@@ -143,6 +143,10 @@ class Warper:
                 raise ValueError("landmarks must have 468 landmarks")
             self.__landmarks = lms_face
 
+        # # check if gray image, if so convert to rgb
+        # if np.ndim(img_face) == 2:
+        #     img_face = cv2.cvtColor(img_face, cv2.COLOR_GRAY2RGB)
+
         return self.__warp(
             cooridnates_dst=self.__landmarks[self.face_model.masking],
             image_src=img_data,
