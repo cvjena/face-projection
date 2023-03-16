@@ -11,6 +11,19 @@ The user can provide `face_data` which then projected onto the `face_img`.
 We support automatic face detection with landmark extraction using `mediapipe`.
 However, the user can also provide the landmarks manually if they are already known and fit the Canonical Face Model.
 
+## Installation
+
+### MacOS
+
+To use meshpy a C++ compiler is required.
+On MacOS you can use xcodebuild which is installed by default.
+To enable it please run the following command and agree to the license agreement.
+Then it should be able to compile the C++ code in your python environment.
+
+```bash
+sudo xcodebuild -license
+```
+
 ## Usage
 
 ```python
