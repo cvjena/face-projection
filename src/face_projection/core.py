@@ -91,7 +91,8 @@ class Warper:
         if results.multi_face_landmarks:
             lms = results.multi_face_landmarks[0].landmark
             for i in range(468):
-                self.__landmarks[i, :] = int(lms[i].x * w), int(lms[i].y * h), lms[i].z
+                # scale z by w to net be removed by conversion to int
+                self.__landmarks[i, :] = int(lms[i].x * w), int(lms[i].y * h), int(lms[i].z * w)
 
     def apply(
         self,
