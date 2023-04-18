@@ -28,21 +28,17 @@ class FaceModel:
         assert len(self.points) == 468, "The number of points must be 468"
 
         self.hull_idx = cv2.convexHull(self.points, clockwise=False, returnPoints=False)
-        self.hull = np.array(
-            [self.points[self.hull_idx[i][0]] for i in range(0, len(self.hull_idx))]
-        )
+        self.hull = np.array([self.points[self.hull_idx[i][0]] for i in range(0, len(self.hull_idx))])
 
         # compute default triangulation
-        outer_hull = self.__connect_hull()
+        outer_hull = self.connect_hull(self.hull_idx)
 
         mesh_info = triangle.MeshInfo()
         # set the points from the annotated file
         mesh_info.set_points(self.points.tolist())
 
         # set the bounding values! ensure that each is a circle like structure
-        mesh_info.set_facets(
-            outer_hull + consts.EYE_HULL_L_O + consts.EYE_HULL_R_O + consts.LIPS_HULL_O
-        )
+        mesh_info.set_facets(outer_hull + consts.EYE_HULL_L_O + consts.EYE_HULL_R_O + consts.LIPS_HULL_O)
 
         # inform the algorithm where some of the whole are!
         mesh_info.set_holes([[1500, 1500], [2500, 1500], [2000, 2800]])
@@ -57,13 +53,13 @@ class FaceModel:
         self.masking[consts.EYE_HULL_R_IDX] = 0
         self.masking[consts.LIPS_HULL_I] = 0
 
-    def __connect_hull(self) -> list[tuple[int, int]]:
+    def connect_hull(self, hull_idx) -> list[tuple[int, int]]:
         results = []
-        for i in range(len(self.hull_idx) - 1):
-            pt1 = self.hull_idx[i]
-            pt2 = self.hull_idx[i + 1]
+        for i in range(len(hull_idx) - 1):
+            pt1 = hull_idx[i]
+            pt2 = hull_idx[i + 1]
             results.append((pt1, pt2))
-        results.append((self.hull_idx[-1], self.hull_idx[0]))
+        results.append((hull_idx[-1], hull_idx[0]))
         return np.array(results).squeeze().tolist()
 
     def set_scale(self, scale: float) -> None:

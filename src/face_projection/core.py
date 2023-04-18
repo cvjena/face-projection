@@ -5,7 +5,9 @@ from typing import Optional
 import cv2
 import mediapipe as mp
 import numpy as np
+from meshpy import triangle
 
+from . import consts
 from .face_model import FaceModel
 
 
@@ -93,6 +95,7 @@ class Warper:
             for i in range(468):
                 # scale z by w to net be removed by conversion to int
                 self.__landmarks[i, :] = int(lms[i].x * w), int(lms[i].y * h), int(lms[i].z * w)
+        return self.__landmarks
 
     def apply(
         self,
@@ -226,6 +229,124 @@ class Warper:
 
             slice_y = slice(self.rect_dst_buffer[i][1], self.rect_dst_buffer[i][1] + self.rect_dst_buffer[i][3])
             slice_x = slice(self.rect_dst_buffer[i][0], self.rect_dst_buffer[i][0] + self.rect_dst_buffer[i][2])
+
+            image_layer_t[mask_crop == 0] = 0
+            image_out[slice_y, slice_x] = image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
+
+        return cv2.addWeighted(image_dst, 1 - beta, image_out, beta, 0.0, dtype=cv2.CV_8U)
+
+    def unwrap_face(
+        self,
+        image_src: np.ndarray[np.uint8],
+    ) -> np.ndarray[np.uint8]:
+        """Warps triangulated area from one image to another image
+
+        TODO THIS can be simplified!
+
+        Uses the internal face model for triangulation and landmarks.
+        The interval buffers are allocated in the constructor once and reused for performance reasons.
+
+        Args:
+            cooridnates_dst (np.ndarray[np.float32]): Landmarks of the destination image
+            image_src (np.ndarray[np.int8]): Image which is warped onto the destination image
+            image_dst (np.ndarray[np.int8]): Destination image where the source image is warped onto
+            beta (float, optional): Blending parameter. Defaults to 0.3.
+
+        Returns:
+            np.ndarray[np.int8]:  The warped image of the destination image
+        """
+        target_size = image_src.shape[0]
+        coordinates_src = self.get_landmarks(image_src)
+        coordinates_dst = consts.FACE_COORDS * (target_size / 4096)
+        coordinates_dst = np.concatenate([coordinates_dst, np.ones((coordinates_dst.shape[0], 1))], axis=1, dtype=np.float32)
+
+        points = consts.FACE_COORDS
+        hull_idx = cv2.convexHull(points, clockwise=False, returnPoints=False)
+        # hull = np.array([coordiantes_src[hull_idx[i][0]] for i in range(0, len(hull_idx))])
+
+        # compute default triangulation
+        outer_hull = self.face_model.connect_hull(hull_idx)
+
+        mesh_info = triangle.MeshInfo()
+        # set the points from the annotated file
+        mesh_info.set_points(points.tolist())
+
+        # set the bounding values! ensure that each is a circle like structure
+        mesh_info.set_facets(outer_hull)
+
+        # inform the algorithm where some of the whole are!
+        # mesh_info.set_holes([[1500, 1500], [2500, 1500], [2000, 2800]])
+
+        mesh = triangle.build(mesh_info=mesh_info, quality_meshing=False, verbose=False)
+        points = np.array(mesh.points, dtype=np.int32)
+        triangles = np.array(mesh.elements, dtype=np.int32)
+        len_triangles = len(triangles)
+
+        rect_src_buffer = np.empty((len_triangles, 4), dtype=np.int32)
+        rect_dst_buffer = np.empty((len_triangles, 4), dtype=np.int32)
+
+        tri_src_crop_buffer = np.empty((len_triangles, 3, 2), dtype=np.float32)
+        tri_dst_crop_buffer = np.empty((len_triangles, 3, 2), dtype=np.float32)
+
+        buffer_3_2 = np.empty((3, 2), dtype=np.float32)
+        depth_buffer = np.empty(len_triangles)
+
+        coordinates_src = np.array(coordinates_src, dtype=int)
+        coordinates_dst = np.array(coordinates_dst, dtype=int)
+        image_out = np.zeros_like(image_src, dtype=np.uint8)
+        image_dst = np.zeros_like(image_src, dtype=np.uint8)
+        beta = 1.0
+
+        # Compute affine transform between src and dst triangles
+        for idx_tri in range(len_triangles):
+            tri_src = coordinates_src[triangles[idx_tri]]
+            tri_dst = coordinates_dst[triangles[idx_tri]]
+
+            depth_buffer[idx_tri] = np.min(tri_dst, axis=1)[-1]
+            tri_src = np.delete(tri_src, 2, 1)
+            tri_dst = np.delete(tri_dst, 2, 1)
+
+            rect_src = cv2.boundingRect(tri_src)
+            rect_dst = cv2.boundingRect(tri_dst)
+
+            rect_src_buffer[idx_tri] = rect_src
+            rect_dst_buffer[idx_tri] = rect_dst
+
+            # Offset points by left top corner of the respective rectangles
+            buffer_3_2[:, 0] = tri_src[:, 0] - rect_src[0]
+            buffer_3_2[:, 1] = tri_src[:, 1] - rect_src[1]
+            tri_src_crop_buffer[idx_tri] = buffer_3_2
+
+            buffer_3_2[:, 0] = tri_dst[:, 0] - rect_dst[0]
+            buffer_3_2[:, 1] = tri_dst[:, 1] - rect_dst[1]
+            tri_dst_crop_buffer[idx_tri] = buffer_3_2
+
+        # Sort triangles by depth (furthest to nearest)
+        depth_buffer = np.argsort(depth_buffer)[::-1]
+
+        # Warp triangles from src image to dst image
+        for idx in range(len_triangles):
+            i = depth_buffer[idx]
+            # Crop input image
+            image_src_crop = image_src[
+                rect_src_buffer[i][1] : rect_src_buffer[i][1] + rect_src_buffer[i][3],
+                rect_src_buffer[i][0] : rect_src_buffer[i][0] + rect_src_buffer[i][2],
+            ]
+            warping_matrix = cv2.getAffineTransform(tri_src_crop_buffer[i], tri_dst_crop_buffer[i])
+            image_layer_t = cv2.warpAffine(
+                image_src_crop,
+                warping_matrix,
+                (rect_dst_buffer[i][2], rect_dst_buffer[i][3]),
+                flags=cv2.INTER_NEAREST,
+                borderMode=cv2.BORDER_REPLICATE,
+            )
+
+            # Get mask by filling triangle
+            mask_crop = np.zeros((rect_dst_buffer[i][3], rect_dst_buffer[i][2], 3), dtype=np.uint8)
+            mask_crop = cv2.fillConvexPoly(mask_crop, np.int32(tri_dst_crop_buffer[i]), (1, 1, 1), cv2.LINE_AA, 0)
+
+            slice_y = slice(rect_dst_buffer[i][1], rect_dst_buffer[i][1] + rect_dst_buffer[i][3])
+            slice_x = slice(rect_dst_buffer[i][0], rect_dst_buffer[i][0] + rect_dst_buffer[i][2])
 
             image_layer_t[mask_crop == 0] = 0
             image_out[slice_y, slice_x] = image_out[slice_y, slice_x] * (1 - mask_crop) + image_layer_t
