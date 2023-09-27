@@ -136,7 +136,7 @@ class Warper:
             raise TypeError("beta must be a float between 0 and 1")
 
         if not self.face_model.check_valid(img_data):
-            raise ValueError(f"img_dat is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}]")
+            raise ValueError(f"img_dat is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}], got: {img_data.shape}")
 
         if lms_face is None:
             self.get_landmarks(img_face)
