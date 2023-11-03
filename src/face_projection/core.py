@@ -22,9 +22,8 @@ class Warper:
     internal buffers for faster processing.
     """
 
-    def __init__(self, scale: float = 1.0) -> None:
+    def __init__(self) -> None:
         self.face_model = FaceModel()
-        self.face_model.set_scale(scale)
 
         self.__landmarks = np.zeros((468, 3), dtype=np.int32)
         self.__face_mesh = mp.solutions.face_mesh.FaceMesh(
@@ -43,34 +42,6 @@ class Warper:
 
         self.buffer_3_2 = np.empty((3, 2), dtype=np.float32)
         self.depth_buffer = np.empty(self.len_triangles)
-
-    def width(self) -> int:
-        """Get the width of the face model."""
-        return self.face_model.width
-
-    def height(self) -> int:
-        """Get the height of the face model."""
-        return self.face_model.height
-
-    def set_scale(self, scale: float) -> None:
-        """Set the scale of the face model.
-
-        Args:
-            scale (float): The scale of the face model.
-        """
-        self.face_model.set_scale(scale)
-
-    def create_canvas(self) -> np.ndarray[np.int8]:
-        """Create a canvas for the face model.
-
-        This will create a canvas for the face model based on the current scale of the
-        face model.
-
-        Returns:
-            np.ndarray[np.int8]: A canvas for the face model.
-
-        """
-        return self.face_model.create_canvas()
 
     def get_landmarks(self, face_img: np.ndarray):
         """Get the landmarks of the face image.
@@ -132,11 +103,11 @@ class Warper:
         if not isinstance(img_data, np.ndarray):
             raise TypeError("img_dat must be a numpy array")
 
+        if img_data.shape[0] != img_data.shape[1]:
+            raise ValueError("img_data must be a square image")
+
         if not isinstance(beta, float) or (beta < 0 or beta > 1):
             raise TypeError("beta must be a float between 0 and 1")
-
-        if not self.face_model.check_valid(img_data):
-            raise ValueError(f"img_dat is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}], got: {img_data.shape}")
 
         if lms_face is None:
             self.get_landmarks(img_face)
@@ -179,10 +150,15 @@ class Warper:
         Returns:
             np.ndarray[np.int8]:  The warped image of the destination image
         """
+        points = self.face_model.points  # are normalized between 0 and 1
+        points[:, 0] *= image_src.shape[1]
+        points[:, 1] *= image_src.shape[0]
+        points = points.astype(np.int32)
+
         image_out = image_dst.copy()
         # Compute affine transform between src and dst triangles
         for idx_tri in range(self.len_triangles):
-            tri_src = self.face_model.points[self.face_model.triangles[idx_tri]]
+            tri_src = points[self.face_model.triangles[idx_tri]]
             tri_dst = cooridnates_dst[self.face_model.triangles[idx_tri]]
 
             self.depth_buffer[idx_tri] = np.min(tri_dst, axis=1)[-1]

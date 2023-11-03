@@ -51,6 +51,4 @@ MANIFEST
 # Per-project virtualenvs
 .venv*/
 .conda*/
-*.ipynb
 *.ipynb_checkpoints
-temp_data
