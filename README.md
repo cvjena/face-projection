@@ -1,64 +1,61 @@
 # face-projection
 
-This projects main goal is to have a simple library to project information into faces while retaining the facial structure.
+![Teaser](files/teaser.jpg)
 
+Are you looking for a powerful, user-friendly tool to project information onto faces while maintaining their natural structure?
+Look no further – `face-projection` is here to simplify how you visualize facial data.
+The tool is open-source, easy to use, and written in Python, allowing you to easily integrate it into your existing workflow.
+We try to keep the dependencies to a minimum so you can use them in your projects without worrying about compatibility issues.
+However, we do not guarantee perfect anatomical correctness of the results but try to keep the distortion to a minimum.
 
-## Description
-
-Using the Canonical Face Model provided by Google, we can draw any UV map inside the given boundaries to the face.
-This allows us to visualize certain properties of facial features.
-The user can provide `face_data` which then projected onto the `face_img`.
-We support automatic face detection with landmark extraction using `mediapipe`.
-However, the user can also provide the landmarks manually if they are already known and fit the Canonical Face Model.
+All people shown here in the repository examples were generated with `StableDiffusion` (Prompt: `A professional portrait photo of a person directly looking <emotion> at the camera, white background, photoshop, Instagram`)
 
 ## Installation
 
-### MacOS
-
-To use meshpy a C++ compiler is required.
-On MacOS you can use xcodebuild which is installed by default.
-To enable it please run the following command and agree to the license agreement.
-Then it should be able to compile the C++ code in your python environment.
+The tool is available on [PyPI](https://pypi.org/project/face-projection/).
 
 ```bash
-sudo xcodebuild -license
+pip install face-projection
 ```
 
 ## Usage
 
+The tool reduces the overhead of projecting information onto faces to a minimum.
+Load the data and face, project it, and you are done.
+You must only ensure the data is inside the canonical face model (see [electromyogram](https://github.com/cvjena/electromyogram) for an example).
+The head pose can be arbitrary, but the face must be visible.
+
 ```python
 import face_projection as fp
+from PIL import Image
+
+image_face = np.asarray(Image.open("face.jpg").convert("RGB"))
+image_data = np.asarray(Image.open("data.jpg").convert("RGB"))
 
 warper = fp.Warper()
-
-face_img = load_image("face.jpg") # load image of face with your favorite library
-face_data = warper.create_canvas() # creates a empty image with the current size of the face model
-
-# draw something on the face_data
-# your implementation here
-
-# project the face_data onto the face_img, using the automatic face detection
-# beta is the blending factor between 0 and 1
-warped_face = warper.apply(face_img, face_data, beta=0.2)
-
-# if you already know the landmarks, you can provide them manually
-warped_face = warper.apply(face_img, face_data, landmarks=landmarks, beta=0.2)
+warped = warper.apply(image_face, image_data, beta=0.2)
 ```
 
+We automatically detect the face in the image, compute the landmarks based on the `Blaze` model, and warp the data onto it.
+You can decide how much of the underlying face should be visible by adjusting the `beta` parameter.
+
+In `examples/` you can find a more detailed example, which generates the teaser image.
+
 ## Future Work
-- [ ] The user can provide a mask to disable certain parts of the projection
-- [ ] Sample generators for different face properties
+
+We have many ideas for future work, but we are also happy to hear your suggestions.
+The following todos are in no particular order but should give you an idea of what we are planning.
+
+- [ ] The user can provide a mask to turn off certain parts of the projection
+- [X] Different default warpings based on the six default Ekman emotions
 - [ ] More face models
 - [ ] Custom face models
-- [ ] Canvas fitter to fit to the general face model
-
-
-## References
+- [ ] Upgrade to the newest mediapipe version to avoid MacOS build issues
 
 ## Citation
 
 If you use our work, please cite our paper:
 
 ```bibtex
-TODO :^)
+under publication, so coming soon :^)
 ```

@@ -1,14 +1,32 @@
 __all__ = ["Warper"]
 
+from pathlib import Path
 from typing import Optional
 
 import cv2
+import h5py
 import mediapipe as mp
 import numpy as np
 from meshpy import triangle
 
-from . import consts
-from .face_model import FaceModel
+
+class FaceModel:
+    """Face model class.
+
+    The underlying UV model is based on the canonical face model by google:
+        Link: https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model.obj
+        Image: https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
+
+    """
+
+    def __init__(self) -> None:
+        data_file = h5py.File(Path(__file__).parent / "face_model.h5", "r")
+
+        self.points = np.array(data_file["points"])
+        self.triangles = np.array(data_file["triangles"])
+        self.facets = np.array(data_file["facets"])
+        self.masking = np.array(data_file["masking_canonical"])
+        data_file.close()
 
 
 class Warper:
@@ -22,9 +40,8 @@ class Warper:
     internal buffers for faster processing.
     """
 
-    def __init__(self, scale: float = 1.0) -> None:
+    def __init__(self) -> None:
         self.face_model = FaceModel()
-        self.face_model.set_scale(scale)
 
         self.__landmarks = np.zeros((468, 3), dtype=np.int32)
         self.__face_mesh = mp.solutions.face_mesh.FaceMesh(
@@ -44,33 +61,11 @@ class Warper:
         self.buffer_3_2 = np.empty((3, 2), dtype=np.float32)
         self.depth_buffer = np.empty(self.len_triangles)
 
-    def width(self) -> int:
-        """Get the width of the face model."""
-        return self.face_model.width
-
-    def height(self) -> int:
-        """Get the height of the face model."""
-        return self.face_model.height
-
-    def set_scale(self, scale: float) -> None:
-        """Set the scale of the face model.
-
-        Args:
-            scale (float): The scale of the face model.
-        """
-        self.face_model.set_scale(scale)
-
-    def create_canvas(self) -> np.ndarray[np.int8]:
-        """Create a canvas for the face model.
-
-        This will create a canvas for the face model based on the current scale of the
-        face model.
-
-        Returns:
-            np.ndarray[np.int8]: A canvas for the face model.
-
-        """
-        return self.face_model.create_canvas()
+        data_emotion = h5py.File(Path(__file__).parent / "emotion_landmarks.h5", "r")
+        self.emotion_landmarks = {}
+        for emotion in data_emotion.keys():
+            self.emotion_landmarks[emotion] = np.array(data_emotion[emotion])
+        data_emotion.close()
 
     def get_landmarks(self, face_img: np.ndarray):
         """Get the landmarks of the face image.
@@ -132,11 +127,11 @@ class Warper:
         if not isinstance(img_data, np.ndarray):
             raise TypeError("img_dat must be a numpy array")
 
+        if img_data.shape[0] != img_data.shape[1]:
+            raise ValueError("img_data must be a square image")
+
         if not isinstance(beta, float) or (beta < 0 or beta > 1):
             raise TypeError("beta must be a float between 0 and 1")
-
-        if not self.face_model.check_valid(img_data):
-            raise ValueError(f"img_dat is not valid for the face model, expected shape: [{self.face_model.height, self.face_model.width, 3}], got: {img_data.shape}")
 
         if lms_face is None:
             self.get_landmarks(img_face)
@@ -157,6 +152,52 @@ class Warper:
             image_dst=img_face,
             beta=beta,
         )
+
+    def emotion(
+        self,
+        emotion: str,
+        img_data: np.ndarray[np.uint8],
+        beta: float = 0.2,
+    ) -> np.ndarray[np.uint8]:
+        if not isinstance(img_data, np.ndarray):
+            raise TypeError("img_dat must be a numpy array")
+
+        if img_data.shape[0] != img_data.shape[1]:
+            raise ValueError("img_data must be a square image")
+
+        if not isinstance(beta, float) or (beta < 0 or beta > 1):
+            raise TypeError("beta must be a float between 0 and 1")
+
+        if emotion not in self.emotion_landmarks.keys():
+            raise ValueError(f"emotion must be one of the following: {format(self.emotion_landmarks.keys())}")
+
+        landmarks = self.emotion_landmarks[emotion][self.face_model.masking]
+        middle_x = int(landmarks[:, 0].mean())
+        middle_y = int(landmarks[:, 1].mean())
+
+        padding = 0.3
+        x_p = int(middle_x * (1 + padding))
+        y_p = int(middle_y * (1 + padding))
+
+        x_diff = x_p - middle_x
+        y_diff = y_p - middle_y
+
+        img_face = np.full((y_p * 2, x_p * 2, 3), fill_value=(255, 255, 255), dtype=np.uint8)
+        landmarks[:, 0] += x_diff
+        landmarks[:, 1] += y_diff
+
+        warp = self.__warp(
+            cooridnates_dst=landmarks,
+            image_src=img_data,
+            image_dst=img_face,
+            beta=beta,
+        )
+        # cut the image to the size of the landmarks
+        min_x, min_y = landmarks.min(axis=0)[:2]
+        max_x, max_y = landmarks.max(axis=0)[:2]
+
+        warp = warp[min_y:max_y, min_x:max_x]
+        return warp
 
     def __warp(
         self,
@@ -179,10 +220,15 @@ class Warper:
         Returns:
             np.ndarray[np.int8]:  The warped image of the destination image
         """
+        points = np.copy(self.face_model.points)  # are normalized between 0 and 1
+        points[:, 0] *= image_src.shape[1]
+        points[:, 1] *= image_src.shape[0]
+        points = points.astype(np.int32)
+
         image_out = image_dst.copy()
         # Compute affine transform between src and dst triangles
         for idx_tri in range(self.len_triangles):
-            tri_src = self.face_model.points[self.face_model.triangles[idx_tri]]
+            tri_src = points[self.face_model.triangles[idx_tri]]
             tri_dst = cooridnates_dst[self.face_model.triangles[idx_tri]]
 
             self.depth_buffer[idx_tri] = np.min(tri_dst, axis=1)[-1]
@@ -257,10 +303,10 @@ class Warper:
         """
         target_size = image_src.shape[0]
         coordinates_src = self.get_landmarks(image_src)
-        coordinates_dst = consts.FACE_COORDS * (target_size / 4096)
+        coordinates_dst = self.face_model.points * (target_size / 4096)
         coordinates_dst = np.concatenate([coordinates_dst, np.ones((coordinates_dst.shape[0], 1))], axis=1, dtype=np.float32)
 
-        points = consts.FACE_COORDS
+        points = self.face_model.points
         hull_idx = cv2.convexHull(points, clockwise=False, returnPoints=False)
         # hull = np.array([coordiantes_src[hull_idx[i][0]] for i in range(0, len(hull_idx))])
 
