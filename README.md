@@ -8,6 +8,8 @@ The tool is open-source, easy to use, and written in Python, allowing you to eas
 We try to keep the dependencies to a minimum so you can use them in your projects without worrying about compatibility issues.
 However, we do not guarantee perfect anatomical correctness of the results but try to keep the distortion to a minimum.
 
+All people shown here in the repository examples were generated with `StableDiffusion` (Prompt: `A professional portrait photo of a person directly looking <emotion> at the camera, white background, photoshop, Instagram`)
+
 ## Installation
 
 The tool is available on [PyPI](https://pypi.org/project/face-projection/).
