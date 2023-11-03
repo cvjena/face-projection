@@ -9,8 +9,6 @@ import mediapipe as mp
 import numpy as np
 from meshpy import triangle
 
-from . import consts
-
 
 class FaceModel:
     """Face model class.
@@ -253,10 +251,10 @@ class Warper:
         """
         target_size = image_src.shape[0]
         coordinates_src = self.get_landmarks(image_src)
-        coordinates_dst = consts.FACE_COORDS * (target_size / 4096)
+        coordinates_dst = self.face_model.points * (target_size / 4096)
         coordinates_dst = np.concatenate([coordinates_dst, np.ones((coordinates_dst.shape[0], 1))], axis=1, dtype=np.float32)
 
-        points = consts.FACE_COORDS
+        points = self.face_model.points
         hull_idx = cv2.convexHull(points, clockwise=False, returnPoints=False)
         # hull = np.array([coordiantes_src[hull_idx[i][0]] for i in range(0, len(hull_idx))])
 
