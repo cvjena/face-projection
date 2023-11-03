@@ -61,6 +61,12 @@ class Warper:
         self.buffer_3_2 = np.empty((3, 2), dtype=np.float32)
         self.depth_buffer = np.empty(self.len_triangles)
 
+        data_emotion = h5py.File(Path(__file__).parent / "emotion_landmarks.h5", "r")
+        self.emotion_landmarks = {}
+        for emotion in data_emotion.keys():
+            self.emotion_landmarks[emotion] = np.array(data_emotion[emotion])
+        data_emotion.close()
+
     def get_landmarks(self, face_img: np.ndarray):
         """Get the landmarks of the face image.
 
@@ -147,6 +153,52 @@ class Warper:
             beta=beta,
         )
 
+    def emotion(
+        self,
+        emotion: str,
+        img_data: np.ndarray[np.uint8],
+        beta: float = 0.2,
+    ) -> np.ndarray[np.uint8]:
+        if not isinstance(img_data, np.ndarray):
+            raise TypeError("img_dat must be a numpy array")
+
+        if img_data.shape[0] != img_data.shape[1]:
+            raise ValueError("img_data must be a square image")
+
+        if not isinstance(beta, float) or (beta < 0 or beta > 1):
+            raise TypeError("beta must be a float between 0 and 1")
+
+        if emotion not in self.emotion_landmarks.keys():
+            raise ValueError(f"emotion must be one of the following: {format(self.emotion_landmarks.keys())}")
+
+        landmarks = self.emotion_landmarks[emotion][self.face_model.masking]
+        middle_x = int(landmarks[:, 0].mean())
+        middle_y = int(landmarks[:, 1].mean())
+
+        padding = 0.3
+        x_p = int(middle_x * (1 + padding))
+        y_p = int(middle_y * (1 + padding))
+
+        x_diff = x_p - middle_x
+        y_diff = y_p - middle_y
+
+        img_face = np.full((y_p * 2, x_p * 2, 3), fill_value=(255, 255, 255), dtype=np.uint8)
+        landmarks[:, 0] += x_diff
+        landmarks[:, 1] += y_diff
+
+        warp = self.__warp(
+            cooridnates_dst=landmarks,
+            image_src=img_data,
+            image_dst=img_face,
+            beta=beta,
+        )
+        # cut the image to the size of the landmarks
+        min_x, min_y = landmarks.min(axis=0)[:2]
+        max_x, max_y = landmarks.max(axis=0)[:2]
+
+        warp = warp[min_y:max_y, min_x:max_x]
+        return warp
+
     def __warp(
         self,
         cooridnates_dst: np.ndarray[np.int32],
@@ -168,7 +220,7 @@ class Warper:
         Returns:
             np.ndarray[np.int8]:  The warped image of the destination image
         """
-        points = self.face_model.points  # are normalized between 0 and 1
+        points = np.copy(self.face_model.points)  # are normalized between 0 and 1
         points[:, 0] *= image_src.shape[1]
         points[:, 1] *= image_src.shape[0]
         points = points.astype(np.int32)
